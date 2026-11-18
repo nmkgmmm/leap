@@ -1,7 +1,5 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>LEAP単語帳</title>
-<link rel="icon" href="favicon.png" type="image/png">
-<link rel="apple-touch-icon" href="favicon.png">
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -180,6 +178,14 @@ table.rp td:last-child{width:46%}
 .fld textarea{min-height:76px;resize:vertical;line-height:1.5}.fld small{display:block;color:var(--sub);font-size:.75rem;margin-top:3px}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}@media(max-width:520px){.fgrid{grid-template-columns:1fr}}
 .mbtn.edit{background:var(--card);color:var(--sub);font-weight:600}.btn.danger{border-color:#b3261e;color:#b3261e}
+.gbadge{margin-left:8px;font-weight:700;font-size:1rem;width:26px;height:26px;display:inline-grid;place-items:center;border-radius:50%;border:1.5px solid currentColor}
+.g-o{color:var(--ok)}.g-t{color:var(--warn)}.g-x{color:#d6455d}
+.grow{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.grow .gw{flex:1;min-width:0}.grow .gw b{font-family:var(--f-en);font-size:1.05rem}.grow .gw span{display:block;color:var(--sub);font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gb{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);font-size:1.1rem;font-weight:700;flex:none}
+.gb[data-g="o"]{color:var(--ok)}.gb[data-g="t"]{color:var(--warn)}.gb[data-g="x"]{color:#d6455d}
+.gb[aria-pressed="true"]{background:currentColor;border-color:currentColor}.gb[aria-pressed="true"] span{color:var(--card)}
+.gb.gx{width:auto;padding:0 12px}
 textarea.imp{width:100%;min-height:150px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:.8rem}
 pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:.75rem;overflow-x:auto;margin:6px 0 0}
 .msg{margin-top:10px;font-size:.88rem;min-height:1.3em}
@@ -226,6 +232,10 @@ pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:10px;pad
       <option value="all">すべて</option>
       <option value="unl">未習のみ</option>
       <option value="done">既習のみ</option>
+      <option value="g:o">定着 ○</option>
+      <option value="g:t">定着 △</option>
+      <option value="g:x">定着 ×</option>
+      <option value="g:n">定着度 未評価</option>
     </select>
     <button class="chipbtn" id="btnMask" type="button" aria-pressed="false">意味を隠す</button>
     <button class="chipbtn" id="btnReport" type="button">レポート</button>
@@ -304,7 +314,8 @@ var SAMPLE=[{"no":1,"word":"agree","pos":"自動詞","pron":"əgríː","meanings
 
 /* ---------- state ---------- */
 var words=[], isSample=true;
-var prog={mastered:{},stat:{},history:[]};
+var prog={mastered:{},stat:{},history:[],grade:{}};
+var GL={o:"○",t:"△",x:"×"};
 function partOf(n){return n<=400?"part1":n<=1000?"part2":n<=1400?"part3":n<=2000?"part4":"+α"}
 var state={q:"",sort:"no",status:"all",ranks:{},poss:{},level:"",part:"",from:null,to:null,mask:false,limit:50,open:{},list:[]};
 
@@ -344,7 +355,7 @@ function loadAll(){
   else{setWords(SAMPLE,true)}
   applyUser();
   var p=store.get("leap.progress.v1");
-  if(p){prog.mastered=p.mastered||{};prog.stat=p.stat||{};prog.history=p.history||[]}
+  if(p){prog.mastered=p.mastered||{};prog.stat=p.stat||{};prog.history=p.history||[];prog.grade=p.grade||{}}
 }
 /* ---------- 自分で編集・追加 ---------- */
 var userEdits=store.get("leap.edits.v1")||{}, userCustom=store.get("leap.custom.v1")||[];
@@ -417,6 +428,7 @@ function getFiltered(){
   var out=words.filter(function(w){
     if(state.status==="done"&&!prog.mastered[w.key])return false;
     if(state.status==="unl"&&prog.mastered[w.key])return false;
+    if(state.status.slice(0,2)==="g:"){var g=prog.grade[w.key]||"n";if(g!==state.status.slice(2))return false}
     if(rk.length&&!state.ranks[w.rank])return false;
     if(ps.length&&!state.poss[w.pos.split(/[・,、]/)[0]])return false;
     if(state.level&&w.level!==state.level)return false;
@@ -463,7 +475,7 @@ function cardHTML(w){
   var cls="card "+rankCls(w.rank)+(done?" done":"")+(state.mask?" masked":"")+(state.mask&&isOpen("reveal")?" reveal":"");
   return '<article class="'+cls+'" data-k="'+esc(k)+'">'+
     '<div class="head"><button class="chk" type="button" data-act="chk" aria-pressed="'+done+'" aria-label="'+esc(w.word)+'を既習にする"></button>'+
-    '<span class="no">'+w.no+'</span><h2 class="w">'+esc(w.word)+'</h2>'+(w.pron?'<span class="pron">〔'+esc(w.pron)+'〕</span>':"")+'<span class="rank">'+esc(w.rank)+'</span></div>'+
+    '<span class="no">'+w.no+'</span><h2 class="w">'+esc(w.word)+'</h2>'+(w.pron?'<span class="pron">〔'+esc(w.pron)+'〕</span>':"")+'<span class="rank">'+esc(w.rank)+'</span>'+(prog.grade[k]?'<span class="gbadge g-'+prog.grade[k]+'" title="定着度">'+GL[prog.grade[k]]+'</span>':"")+'</div>'+
     '<div class="tags">'+tags+'</div>'+
     '<div class="body"'+(state.mask?' data-act="reveal"':"")+'><div class="lcol"><button class="spk" type="button" data-speak="'+esc(w.word)+'" aria-label="'+esc(w.word)+' の発音を聞く"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>発音</button><ol class="mean">'+mean+'</ol>'+freq+'</div>'+memo+'</div>'+
     '<div class="more">'+btns+stat+'</div>'+panel+'</article>';
@@ -598,7 +610,7 @@ document.addEventListener("click",function(e){
   if(!b)return;e.stopPropagation();e.preventDefault();speak(b.getAttribute("data-speak"),b);
 },true);
 /* ---------- quiz ---------- */
-var qz={phase:"setup",cfg:{src:"view",n:"10",dir:"en",from:"",to:"",unl:false,custom:""},items:[],i:0,res:[],answered:false};
+var qz={phase:"setup",cfg:{src:"view",n:"10",dir:"en",from:"",to:"",unl:false,custom:"",none:true},items:[],i:0,res:[],answered:false};
 function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
 function mtext(w){return w.meanings.slice(0,2).join(" / ")}
 function rangePool(){
@@ -610,14 +622,15 @@ function rangePool(){
 function poolOf(src){
   if(src==="range")return rangePool();
   if(src==="unl")return words.filter(function(w){return !prog.mastered[w.key]});
+  if(src==="gtx")return words.filter(function(w){var g=prog.grade[w.key];return g==="t"||g==="x"});
   if(src==="weak")return words.filter(function(w){return (prog.stat[w.key]||{}).w>0});
   return state.list.length?state.list:words;
 }
 function makeQ(w){
   var cands=shuffle(words.filter(function(x){return x.key!==w.key&&x.meanings.length&&mtext(x)!==mtext(w)}));
   var same=cands.filter(function(x){return x.pos===w.pos}), other=cands.filter(function(x){return x.pos!==w.pos});
-  var d=same.concat(other).slice(0,3);
-  return {w:w,choices:shuffle([w].concat(d))};
+  var d=same.concat(other).slice(0,4);
+  return {w:w,choices:shuffle([w].concat(d.slice(0,3))),extra:d,correctKey:w.key};
 }
 function renderQuiz(){
   var el=$("#quizBody"), c=qz.cfg;
@@ -631,9 +644,11 @@ function renderQuiz(){
         '<span style="display:flex;gap:4px;flex-wrap:wrap;width:100%">'+[["part1",1,400],["part2",401,1000],["part3",1001,1400],["part4",1401,2000],["+α",2001,2300]].map(function(p){return '<button class="btn" type="button" data-qp="'+p[1]+'-'+p[2]+'" style="padding:2px 10px">'+p[0]+'</button>'}).join("")+'</span>'+
         '<label style="width:100%;display:flex;gap:6px;align-items:center;font-size:.9rem"><input type="checkbox" id="qUnl"'+(c.unl?" checked":"")+'> 範囲内の未習の語だけ出題</label></div><div class="opts" style="margin-top:8px">'+
         radio("src","unl","未習のみ("+poolOf("unl").length+"語)",c.src)+
+        radio("src","gtx","定着度 △×の語("+poolOf("gtx").length+"語)",c.src)+
         radio("src","weak","間違えた語("+poolOf("weak").length+"語)",c.src)+'</div></fieldset>'+
       '<fieldset><legend>問題数</legend><div class="opts">'+["10","20","50","all"].map(function(n){return radio("n",n,n==="all"?"全部":n+"問",c.n)}).join("")+
         radio("n","custom","自由入力",c.n)+'</div><div class="rng" style="margin-top:8px"><input type="number" id="qCustom" min="1" placeholder="問題数" value="'+esc(c.custom)+'" style="width:6em"> 問</div></fieldset>'+
+      '<fieldset><legend>4択のオプション</legend><label class="opt-line" style="display:flex;gap:8px;align-items:center;font-size:.92rem"><input type="checkbox" id="qNone"'+(c.none===false?"":" checked")+'> ひっかけ選択肢「この中にはない」を加える(ときどき正解になります)</label></fieldset>'+
       '<fieldset><legend>出題形式</legend><div class="opts">'+radio("dir","en","英語 → 日本語",c.dir)+radio("dir","ja","日本語 → 英語",c.dir)+radio("dir","cloze","例文の穴埋め",c.dir)+radio("dir","spell","書き取り(日本語 → つづり)",c.dir)+radio("dir","dict","書き取り(音声 → つづり)",c.dir)+'</div>'+'<small style="color:var(--sub)">穴埋めは例文のある単語だけ出題されます。</small>'+'</fieldset>'+
       '<div class="msg err" id="qMsg"></div><div class="actions"><button class="btn" type="button" id="qStart">始める</button></div>';
     return;
@@ -657,7 +672,7 @@ function renderQuiz(){
     }
     var prompt=c.dir==="cloze"?'<div class="bigj" style="font-size:1.15rem;line-height:1.6;font-family:var(--f-en)">'+esc(q.cloze.en)+'</div>'+(q.cloze.ja?'<small>'+esc(q.cloze.ja)+'</small>':"")+'<small style="display:block;margin-top:4px">空欄に入る語を選んでください(形が変わって入ることがあります)</small>':c.dir==="en"?'<div class="big">'+esc(w.word)+'</div>'+spk(w)+'<small>'+esc(w.pos)+(w.pron?' 〔'+esc(w.pron)+'〕':"")+'</small>':'<div class="bigj">'+esc(mtext(w))+'</div><small>'+esc(w.pos)+'</small>';
     var ch=q.choices.map(function(x,i){
-      return '<button class="choice" type="button" data-i="'+i+'"><b>'+(i+1)+'</b><span>'+esc(c.dir==="en"?mtext(x):x.word)+'</span></button>';
+      return '<button class="choice" type="button" data-i="'+i+'"><b>'+(i+1)+'</b><span>'+(x.none?"この中にはない":esc(c.dir==="en"?mtext(x):x.word))+'</span></button>';
     }).join("");
     el.innerHTML='<div class="dhead"><div class="qmeta" style="flex:1"><span>'+(qz.i+1)+' / '+total+'</span><span>正解 '+qz.res.filter(function(r){return r.ok}).length+'</span></div><button class="x" type="button" data-close aria-label="中断">×</button></div>'+
       '<div class="prog"><div style="width:'+(qz.i/total*100)+'%"></div></div>'+
@@ -669,6 +684,7 @@ function renderQuiz(){
   el.innerHTML='<div class="dhead"><div><h2>結果</h2></div><button class="x" type="button" data-close aria-label="閉じる">×</button></div>'+
     '<p class="score">'+ok+'<small> / '+n+'  ('+Math.round(ok/n*100)+'%)</small></p>'+
     (wrong.length?'<div class="sec"><h3>間違えた語</h3><ul class="wrong">'+wrong.map(function(r){return '<li><b>'+esc(r.w.word)+'</b><span>'+esc(mtext(r.w))+'</span></li>'}).join("")+'</ul></div>':'<p class="lead" style="text-align:center;margin-top:14px">全問正解です。</p>')+
+    '<div class="sec"><h3>定着度を記録(○:覚えた △:あいまい ×:覚えていない)</h3><div class="actions" style="margin:0 0 6px"><button class="btn ghost sm" type="button" id="qAutoG">結果から自動入力(正解→○・不正解→×)</button></div><div id="gList">'+qz.res.map(function(r){var g=prog.grade[r.w.key]||"";return '<div class="grow" data-k="'+esc(r.w.key)+'"><div class="gw"><b>'+esc(r.w.word)+'</b> <small>'+(r.ok?"正解":"不正解")+'</small><span>'+esc(mtext(r.w))+'</span></div>'+["o","t","x"].map(function(x){return '<button class="gb" type="button" data-g="'+x+'" aria-pressed="'+(g===x)+'" aria-label="'+GL[x]+'"><span>'+GL[x]+'</span></button>'}).join("")+'</div>'}).join("")+'</div></div>'+
     '<div class="actions">'+(wrong.length?'<button class="btn" type="button" id="qRetry">間違えた語だけ再挑戦</button>':'')+
     (ok?'<button class="btn ghost" type="button" id="qMaster">正解した語を既習にする</button>':'')+
     '<button class="btn ghost" type="button" id="qAgain">設定に戻る</button></div>';
@@ -693,6 +709,12 @@ function stemRe(t){
 }
 function startQuiz(list){
   qz.items=list.map(makeQ);
+  qz.items.forEach(function(q){
+    if(qz.cfg.none===false||isSpell())return;
+    var NONE={none:true,key:"__none",word:"この中にはない",meanings:["この中にはない"]};
+    if(Math.random()<0.25&&q.extra.length>=4){q.noneCorrect=true;q.correctKey="__none";q.choices=shuffle(q.extra.slice(0,4))}
+    q.choices=q.choices.concat([NONE]);
+  });
   if(qz.cfg.dir==="cloze")qz.items.forEach(function(q){var c=clozeOf(q.w);q.cloze=c[Math.floor(Math.random()*c.length)]});qz.i=0;qz.res=[];qz.answered=false;qz.phase="q";renderQuiz();
 }
 function spellTargets(w){
@@ -709,7 +731,7 @@ function submitSpell(skip){
 }
 function answer(i,spellOk){
   if(qz.answered)return;qz.answered=true;
-  var q=qz.items[qz.i], ok=(spellOk!==undefined)?spellOk:q.choices[i].key===q.w.key;
+  var q=qz.items[qz.i], ok=(spellOk!==undefined)?spellOk:q.choices[i].key===q.correctKey;
   if(spellOk!==undefined){var si=$("#qSpell");if(si)si.disabled=true;["qSubmit","qSkip","qHint"].forEach(function(id){var b=$("#"+id);if(b)b.disabled=true})}
   qz.res.push({w:q.w,ok:ok});
   var s=prog.stat[q.w.key]||(prog.stat[q.w.key]={c:0,w:0});
@@ -717,13 +739,14 @@ function answer(i,spellOk){
   saveProg();
   document.querySelectorAll("#choices .choice").forEach(function(b,idx){
     b.disabled=true;
-    if(q.choices[idx].key===q.w.key)b.classList.add("ok");
+    if(q.choices[idx].key===q.correctKey)b.classList.add("ok");
     else if(idx===i)b.classList.add("ng");
   });
   var last=qz.i>=qz.items.length-1;
   $("#qfb").innerHTML='<div class="fb"><strong>'+(ok?"正解":"不正解")+'</strong>'+esc(q.w.word)+' <button class="spk" type="button" data-speak="'+esc(q.w.word)+'" aria-label="発音を聞く" style="margin:0 6px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>発音</button>= '+esc(q.w.meanings.join(" / "))+(q.w.memo?'<br>'+esc(q.w.memo.slice(0,90))+(q.w.memo.length>90?"…":""):"")+'</div>'+
     '<div class="actions"><button class="btn" type="button" id="qNext">'+(last?"結果を見る":"次の問題へ")+'</button></div>';
   if(spellOk!==undefined&&!ok){var fb2=document.querySelector("#qfb .fb");if(fb2)fb2.insertAdjacentHTML("beforeend",'<br>あなたの答え: <b>'+(q.typed?esc(q.typed):"(未入力)")+'</b>')}
+  if(q.noneCorrect){var fb3=document.querySelector("#qfb .fb");if(fb3)fb3.insertAdjacentHTML("beforeend",'<br><b>この問題の正解は「この中にはない」でした。</b>(選択肢の中に正しい答えはありません)')}
   if(q.cloze){var fb=document.querySelector("#qfb .fb");if(fb)fb.insertAdjacentHTML("beforeend",'<br><span style="font-family:var(--f-en)">'+esc(q.cloze.full)+'</span>'+(q.cloze.ja?'<br>'+esc(q.cloze.ja):""))}
   var nb=$("#qNext");if(nb)nb.focus();
 }
@@ -749,13 +772,18 @@ $("#quizBody").addEventListener("click",function(e){
   var t=e.target;
   if(t.closest(".choice")){answer(+t.closest(".choice").dataset.i);return}
   if(t.dataset&&t.dataset.qp){var r=t.dataset.qp.split("-");$("#qFrom").value=r[0];$("#qTo").value=r[1];document.querySelector('#quizBody input[name="src"][value="range"]').checked=true;return}
+  var gb=t.closest&&t.closest(".gb");
+  if(gb){var row=gb.closest(".grow"),gk=row.dataset.k,gv=gb.dataset.g;
+    if(prog.grade[gk]===gv)delete prog.grade[gk];else prog.grade[gk]=gv;saveProg();
+    row.querySelectorAll(".gb").forEach(function(b){b.setAttribute("aria-pressed",String(prog.grade[gk]===b.dataset.g))});render();return}
+  if(t.id==="qAutoG"){qz.res.forEach(function(r){prog.grade[r.w.key]=r.ok?"o":"x"});saveProg();renderQuiz();render();toast("自動入力しました。必要なら変更してください");return}
   if(t.id==="qSubmit"){submitSpell(false);return}
   if(t.id==="qSkip"){submitSpell(true);return}
   if(t.id==="qHint"){var q0=qz.items[qz.i],tg=spellTargets(q0.w)[0]||"";var d=$("#qDash");if(d)d.insertAdjacentHTML("beforeend",' <b style="letter-spacing:0">頭文字: '+esc(tg.charAt(0))+'</b>');t.disabled=true;var si=$("#qSpell");if(si)si.focus();return}
   if(t.id==="qNext")nextQ();
   else if(t.id==="qStart"){
     var f=function(n){var r=document.querySelector('#quizBody input[name="'+n+'"]:checked');return r?r.value:""};
-    qz.cfg={src:f("src")||"view",n:f("n")||"10",dir:f("dir")||"en",from:$("#qFrom").value,to:$("#qTo").value,unl:$("#qUnl").checked,custom:$("#qCustom").value};
+    qz.cfg={src:f("src")||"view",n:f("n")||"10",dir:f("dir")||"en",from:$("#qFrom").value,to:$("#qTo").value,unl:$("#qUnl").checked,custom:$("#qCustom").value,none:$("#qNone").checked};
     var pool=poolOf(qz.cfg.src);
     if(qz.cfg.dir==="cloze")pool=pool.filter(function(w){return clozeOf(w).length});
     if(pool.length<4){$("#qMsg").textContent=qz.cfg.src==="range"&&!pool.length&&!qz.cfg.from&&!qz.cfg.to?"開始か終了の番号を入力してください。":"4語以上が必要です。出題範囲を変えてください。";return}
@@ -771,7 +799,7 @@ $("#quizBody").addEventListener("click",function(e){
 document.addEventListener("keydown",function(e){
   if(!$("#dQuiz").open||qz.phase!=="q")return;
   if(isSpell()&&!qz.answered)return;
-  if(e.key>="1"&&e.key<="4"&&!qz.answered)answer(parseInt(e.key,10)-1);
+  if(e.key>="1"&&e.key<="5"&&!qz.answered&&qz.items[qz.i].choices.length>=parseInt(e.key,10))answer(parseInt(e.key,10)-1);
   else if((e.key==="Enter"||e.key==="ArrowRight")&&qz.answered&&document.activeElement.id!=="qNext")nextQ();
 });
 
@@ -789,6 +817,7 @@ function openReport(){
   var fmt=function(t){var d=new Date(t);return (d.getMonth()+1)+"/"+d.getDate()+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)};
   $("#reportBody").innerHTML='<div class="dhead"><div><h2>学習レポート</h2><p class="lead">この端末のブラウザに保存された記録です。</p></div><button class="x" type="button" data-close aria-label="閉じる">×</button></div>'+
     '<div class="sec" style="margin-top:6px"><h3>全体の進み具合</h3><p style="margin:0 0 6px;font-size:1.4rem;font-family:var(--f-en)">'+done+' <small style="color:var(--sub);font-size:.9rem">/ '+total+' 語 ('+(total?Math.round(done/total*100):0)+'%)</small></p>'+bar(total?done/total:0)+'</div>'+
+    '<div class="sec"><h3>定着度別</h3>'+groupRows(function(w){var g=prog.grade[w.key];return g?GL[g]:"未評価"},["○","△","×","未評価"])+'</div>'+
     '<div class="sec"><h3>ランク別</h3>'+groupRows(function(w){return w.rank},["最重要","重要","標準"])+'</div>'+
     '<div class="sec"><h3>パート別</h3>'+groupRows(function(w){return partOf(w.no)},["part1","part2","part3","part4","+α"])+'</div>'+
     '<div class="sec"><h3>見出し別</h3>'+groupRows(function(w){return w.level})+'</div>'+
