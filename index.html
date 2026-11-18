@@ -185,6 +185,8 @@ table.rp td:last-child{width:46%}
 .gb{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);font-size:1.1rem;font-weight:700;flex:none}
 .gb[data-g="o"]{color:var(--ok)}.gb[data-g="t"]{color:var(--warn)}.gb[data-g="x"]{color:#d6455d}
 .gb[aria-pressed="true"]{background:currentColor;border-color:currentColor}.gb[aria-pressed="true"] span{color:var(--card)}
+.gsel{display:inline-flex;align-items:center;gap:6px;margin-right:6px}.gsel small{color:var(--sub);font-size:.8rem}
+.gb.sm{width:34px;height:34px;font-size:1rem}
 .gb.gx{width:auto;padding:0 12px}
 textarea.imp{width:100%;min-height:150px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font-family:ui-monospace,Menlo,monospace;font-size:.8rem}
 pre.fmt{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:.75rem;overflow-x:auto;margin:6px 0 0}
@@ -468,6 +470,7 @@ function cardHTML(w){
   var btns="";
   if(w.examples.length)btns+='<button class="mbtn" type="button" data-act="ex" aria-expanded="'+(!!isOpen("ex"))+'">例文 '+w.examples.length+(isOpen("ex")?" ▴":" ▾")+'</button>';
   if(w.related.length)btns+='<button class="mbtn" type="button" data-act="rel" aria-expanded="'+(!!isOpen("rel"))+'">関連・混同 '+w.related.length+(isOpen("rel")?" ▴":" ▾")+'</button>';
+  btns+='<span class="gsel" role="group" aria-label="理解度"><small>理解度</small>'+["o","t","x"].map(function(x){return '<button class="gb sm" type="button" data-act="grade" data-g="'+x+'" aria-pressed="'+(prog.grade[k]===x)+'" aria-label="理解度 '+GL[x]+'"><span>'+GL[x]+'</span></button>'}).join("")+'</span>';
   btns+='<button class="mbtn edit" type="button" data-act="edit">✎ 編集</button>';
   var panel="";
   if(isOpen("ex")&&w.examples.length)panel+='<div class="panel"><ul>'+w.examples.map(function(x){return '<li><p class="en">'+(x.s?'<span class="sn">'+("①②③④⑤⑥⑦⑧".charAt(x.s-1)||x.s)+'</span> ':"")+esc(x.en)+'</p>'+(x.ja?'<p class="ja">'+esc(x.ja)+'</p>':"")+'</li>'}).join("")+'</ul></div>';
@@ -574,6 +577,10 @@ $("#list").addEventListener("click",function(ev){
     return;
   }
   if(act==="edit"){openEdit(w);return}
+  if(act==="grade"){
+    var gv=btn.dataset.g;if(prog.grade[k]===gv)delete prog.grade[k];else prog.grade[k]=gv;saveProg();
+    if(/^g:/.test(state.status))render();else{card.outerHTML=cardHTML(w);updateCounts()}
+    return}
   var key=k+":"+act;
   if(state.open[key])delete state.open[key];else state.open[key]=1;
   card.outerHTML=cardHTML(w);
